@@ -2,11 +2,14 @@ package com.example.myapplication
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
-class DnsViewmodel(private val repo: DnsRepository) : ViewModel() {
+@HiltViewModel
+class DnsViewmodel @Inject constructor(private val repo: DnsRepository) : ViewModel() {
 
 
     private val _state = MutableStateFlow(DnsUiState())
