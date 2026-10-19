@@ -38,6 +38,7 @@ android {
 
 dependencies {
     ksp("com.google.dagger:hilt-compiler:2.60.1")
+    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
     implementation("com.google.dagger:hilt-android:2.60.1")
     implementation(libs.androidx.compose.runtime)
     implementation(platform(libs.androidx.compose.bom))
