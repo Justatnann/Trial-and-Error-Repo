@@ -16,9 +16,10 @@ class DnsViewmodel @Inject constructor(private val repo: DnsRepository) : ViewMo
     val state: StateFlow<DnsUiState> = _state
 
     fun startDiscovery() {
+        _state.value =
+            _state.value.copy(isLoading = true, isTimeout = false, error = null, success = "")
+
         viewModelScope.launch {
-            _state.value =
-                _state.value.copy(isLoading = true, isTimeout = false, error = null, success = "")
             repo.getDns().collect { result ->
                 when (result) {
                     is DnsResult.Found -> _state.value =

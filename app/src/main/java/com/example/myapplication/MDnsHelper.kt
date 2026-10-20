@@ -22,6 +22,7 @@ class BackendDiscoveryManager(val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Main)
     private var timeoutJob: Job? = null
     private var backendFound = false
+    private var discoveryActive = false
 
     var onBackendFound: ((String) -> Unit)? = null
     var onDiscoveryTimeout: (() -> Unit)? = null
@@ -65,9 +66,18 @@ class BackendDiscoveryManager(val context: Context) {
         }
 
         override fun onServiceFound(serviceInfo: NsdServiceInfo?) {
-            Log.d("BackendDiscovery", "Found services: $serviceInfo")
-            serviceInfo?.let { nsdManager.resolveService(it, resolveListener) }
+            Log.d("BackendDiscovery", "APP: onServiceFound called")
 
+            serviceInfo?.let {
+                try {
+                    Log.d("BackendDiscovery", "APP: Calling resolveService")
+                    
+                    nsdManager.resolveService(it, resolveListener)
+                    Log.d("BackendDiscovery", "APP: resolveService returned")
+                } catch (e: Exception) {
+                    Log.e("BackendDiscovery", "APP: resolveService threw an exception", e)
+                }
+            }
         }
 
         override fun onServiceLost(serviceInfo: NsdServiceInfo?) {
@@ -89,23 +99,26 @@ class BackendDiscoveryManager(val context: Context) {
 
 
     fun startDiscovery() {
-        if (!isDiscovering) {
-            backendFound = false
-            nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
-            timeoutJob = scope.launch {
-                delay(10_000L.milliseconds)
-                if (!backendFound) {
-
-                    stopDiscovery()
-                    onDiscoveryTimeout?.invoke()
-                }
+        if (discoveryActive) return
+        discoveryActive = true
+        backendFound = false
+        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
+        timeoutJob?.cancel()
+        timeoutJob = scope.launch {
+            delay(30_000)
+            if (!backendFound) {
+                stopDiscovery(); onDiscoveryTimeout?.invoke()
             }
         }
     }
 
     fun stopDiscovery() {
-        if (isDiscovering) {
+        timeoutJob?.cancel()
+        if (!discoveryActive) return
+        discoveryActive = false
+        try {
             nsdManager.stopServiceDiscovery(listener)
+        } catch (e: IllegalArgumentException) {
         }
     }
 
