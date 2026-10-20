@@ -26,7 +26,6 @@ class BackendDiscoveryManager(val context: Context) {
 
     var onBackendFound: ((String) -> Unit)? = null
     var onDiscoveryTimeout: (() -> Unit)? = null
-    var isDiscovering = false
 
 
     val resolveListener = object : NsdManager.ResolveListener {
@@ -41,9 +40,10 @@ class BackendDiscoveryManager(val context: Context) {
         override fun onServiceResolved(serviceInfo: NsdServiceInfo?) {
             Log.d("ResolveListener", "Resolve Listener Success: $serviceInfo")
             serviceInfo?.let {
-                Log.d("ResolveListener", "Host Address: ${it.host.hostAddress}")
+                val host = it.host?.hostAddress ?: return
+                Log.d("ResolveListener", "Host Address: ${host}")
                 Log.d("ResolveListener", "Host Port: ${it.port}")
-                baseUrl = "https://${it.host.hostAddress}:${it.port}"
+                baseUrl = "https://${host}:${it.port}"
                 Log.d("ResolveListener", "Backend URL: $baseUrl")
                 backendFound = true
                 timeoutJob?.cancel()
@@ -57,12 +57,10 @@ class BackendDiscoveryManager(val context: Context) {
     val listener = object : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String?) {
             Log.d("BackendDiscovery", "Starting Discovery: $serviceType")
-            isDiscovering = true
         }
 
         override fun onDiscoveryStopped(serviceType: String?) {
             Log.d("BackendDiscovery", "Discovery Stopped: $serviceType")
-            isDiscovering = false
         }
 
         override fun onServiceFound(serviceInfo: NsdServiceInfo?) {
@@ -71,7 +69,7 @@ class BackendDiscoveryManager(val context: Context) {
             serviceInfo?.let {
                 try {
                     Log.d("BackendDiscovery", "APP: Calling resolveService")
-                    
+
                     nsdManager.resolveService(it, resolveListener)
                     Log.d("BackendDiscovery", "APP: resolveService returned")
                 } catch (e: Exception) {
@@ -87,12 +85,14 @@ class BackendDiscoveryManager(val context: Context) {
 
         override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
             Log.d("BackendDiscovery", "Starting Discovery Failed: $errorCode | $serviceType")
-            isDiscovering = false
+            discoveryActive = false
+            timeoutJob?.cancel()
+            onDiscoveryTimeout?.invoke()
         }
 
         override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) {
             Log.d("BackendDiscovery", "Stopping Discovery Failed: $errorCode | $serviceType")
-            isDiscovering = true
+            discoveryActive = false
         }
 
     }
@@ -111,6 +111,18 @@ class BackendDiscoveryManager(val context: Context) {
             }
         }
     }
+
+    // Why the old Stop triggered Error:
+    //t=0   Backend resolved
+    //      onServiceResolved calls stopDiscovery()
+    //        isDiscovering is true -> nsdManager.stopServiceDiscovery(listener)   (stop requested)
+    //
+    //t=1   onBackendFound is invoked -> repo does trySend + close()
+    //      close() triggers awaitClose { ... stopDiscovery() }
+    //        isDiscovering is STILL true (onDiscoveryStopped hasn't arrived yet)
+    //        -> nsdManager.stopServiceDiscovery(listener) AGAIN   (crash)
+    //
+    //t=2   NSD finally calls onDiscoveryStopped -> isDiscovering = false   (too late)
 
     fun stopDiscovery() {
         timeoutJob?.cancel()
